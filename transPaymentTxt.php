@@ -1,7 +1,4 @@
-<!DOCTYPE html>
-<html>
-<body>
-
+<?php require_once('../../../Connections/link.php');?>
 <?php
 ### 連接的 FTP 伺服器是 localhost
 $conn_id = ftp_connect('ip');
@@ -43,6 +40,7 @@ foreach ($payment_files as $file_name) {
     saveParseredFileWithInsertCounts($file_name, $insertCounts);
 }
 echo 'END.</br>';
+
 function downloadPaymentFiles($conn_id, $contents)
 {
     $ary = array();
@@ -68,52 +66,20 @@ function downloadPaymentFiles($conn_id, $contents)
 
 function getUnParseredList($payment_files)
 {
-    /*
-    1.fee_parsered_list下Select, 取得$parsered_files
-    2.將比對到的unset
-    for(int i=[$payment_files count]-1 ; i>=0 ; i--)
-    {
-        if(in_array($payment_files[i], $parsered_files))
-        {
-            unset($payment_files[i]);
-        }
-    }
-    */
-
-    $serverName = "localhost";
-    $userName = "root";
-    $password = "Abcd1234";
-    $dbName = "tokyo_payment_test";
-
-    // Create connection
-    $mysqli = new mysqli($serverName, $userName, $password, $dbName);
-    // Check connection
-    if ($mysqli->connect_error) {
-        die("Connection failed: " . $mysqli->connect_error);
-    }
-
     // SQL 取出fee_tky_parsered所有資料
     $searchAllSqlCmd = "SELECT * FROM fee_tky_parsered";
-    $searchAllFromSql = $mysqli->query($searchAllSqlCmd);
-    if ($searchAllFromSql) {
-        $row = $searchAllFromSql->fetch_array(MYSQLI_ASSOC);
-        $parsered_files = $row["file_name"];
-        echo "DB search file_name: ", $parsered_files, "</br>";
-    } else {
-        echo "Search not found From fee_tky_parsered.", "</br>";
-    }
-
-    // 將比對結果從payment_files移除
-    for ($i = 0; $i < count($payment_files); $i++) {
-        if ($payment_files[$i]== $parsered_files) {
-            unset($payment_files[$i]);
+    //$searchAllFromSql = $mysqli->query($searchAllSqlCmd);
+    $result = mysql_query($searchAllSqlCmd);
+    while ($data = mysql_fetch_assoc($result))
+    {
+        for ($i = 0; $i < count($payment_files); $i++)
+        {
+            if ($payment_files[$i]== $data["file_name"])
+            {
+                unset($payment_files[$i]);
+            }
         }
     }
-
-    $searchAllFromSql ->free();
-    // Close DB
-    $mysqli->close();
-
     return $payment_files;
 }
 
@@ -121,83 +87,126 @@ function parsePaymentItems($file_name)
 {
     $insertCounts = 0;
     $array = file($file_name);
-    foreach ($array as $line) {
+    $arrayCommunity = array();
+    $arrayFeePeriod = array();
+    foreach ($array as $line)
+    {
         echo $line. "</br>";
         $content = parsePayments($line);
 
-        //只是Print而已
-        foreach ($content as $item) {
+        foreach ($content as $item)
+        {
             var_dump($item);
             echo "</br>";
         }
 
-        /*
-        確認資料庫是否已有該"pay_group"，如沒有就做Insert(fee_period)
-
-        將該Item做Insert(fee_order)
-        //insertPaymentItem($content);
-        $insertCounts++;
-        */
-
-        // 連結DB
-        $serverName = "localhost";
-        $userName = "root";
-        $password = "Abcd1234";
-        $dbName = "tokyo_payment_test";
-
-        $mysqli = new mysqli($serverName, $userName, $password, $dbName);
-        if ($mysqli->connect_error) {
-            die("Connection failed: " . $mysqli->connect_error);
-        }
-
-        // 從array取出tky_code
+        //從取得communityId
         $tkyCode = array_values($content[0])[1];
-        echo "tky_code : ",$tkyCode, "</br>";
-
-        // 取得community id
-        $searchTkyCodeSqlCmd = "SELECT community, tky_code FROM liveplates_id_community WHERE tky_code = '$tkyCode'";
-        $searchTkyCodeFromSql = $mysqli->query($searchTkyCodeSqlCmd);
-        if ($searchTkyCodeFromSql) {
-            $row = $searchTkyCodeFromSql->fetch_array(MYSQLI_ASSOC);
-            $communityId = $row["community"];
-            echo "community id: ", $communityId, "</br>";
-        } else {
-            echo "Search not found From liveplates_id_community.", "</br>";
-        }
-        $searchTkyCodeFromSql->free();
-
-
-        // 從array取出account_numbers
-        $accountNumber = array_values($content[1])[1];
-        echo "pay_group : ",$accountNumber, "</br>";
-
-        // 比對fee_period是否有符合條件的資料
-        $mappingIdAndNameSqlCmd = "SELECT community, name FROM fee_period WHERE community = '$communityId' AND name = '$accountNumber'";
-        $mappingIdAndNameFromSql = $mysqli->query($mappingIdAndNameSqlCmd);
-        if ($mappingIdAndNameFromSql->num_rows == 0) {
-            // 取得今日日期
-            $today = date("Y-m-d H:i:s");
-            // 插入資料至fee_period
-            $insertDataSqlCmd = "INSERT INTO fee_period (community, group_id, name, fee_footage, note, create_date)
-                       VALUES ('$communityId', 0, '$accountNumber', 0, '', '$today')";
-            $insertDataFromSql = $mysqli->query($insertDataSqlCmd);
-            if ($insertDataFromSql) {
-                echo "Insert fee_period Success.", "</br>";
-            } else {
-                echo "Insert fee_period Error, Message : ", $mysqli->error, "</br>";
+        $communityId = getCommunityIdFromArrayByTkyCode($arrayCommunity, $tkyCode);
+        if($communityId == "")
+        {
+            $communityId = getCommunityIdFromDBByTkyCode($tkyCode);
+            if($communityId == "")
+            {
+                echo "Search not found From liveplates_id_community.", "</br>";
+                continue;
             }
-        } else {
-            echo "Data is exists From fee_period.", "</br>";
+            else
+            {
+                echo "tky_code : ",$tkyCode, "</br>";
+                echo "community id: ", $communityId, "</br>";
+                array_push($arrayCommunity, array($tkyCode, $communityId));
+            }
         }
-        $mappingIdAndNameFromSql->free();
 
-        $mysqli->close();
+        //確認fee_period
+        $payGroup = array_values($content[2])[1];
+        if(!getFeePeriodFromArray($arrayFeePeriod, $communityId, $payGroup))
+        {
+            if(!insertPayGroupToFeePeriod($communityId, $payGroup))
+            {
+                continue;
+            }
+        }
+        echo "pay_group : ",$payGroup, "</br>";
+        array_push($arrayFeePeriod, array($communityId, $payGroup));
 
-        // 將該Item做Insert(fee_order)
-        insertPaymentItem($content);
+        insertPaymentItem($content, $communityId);
         $insertCounts++;
     }
     return $insertCounts;
+}
+
+function getCommunityIdFromArrayByTkyCode($arrayCommunity, $tkyCode)
+{
+    $CommunityId = "";
+    for($i=0 ; $i<count($arrayCommunity) ; $i++)
+    {
+        if($arrayCommunity[i][0] == $tkyCode)
+        {
+            $CommunityId = $arrayCommunity[i][1];
+            break;
+        }
+    }
+    return $CommunityId;
+}
+
+function getCommunityIdFromDBByTkyCode($tkyCode)
+{
+    // 取得community id
+    $communityId = "";
+    $searchTkyCodeSqlCmd = "SELECT community, tky_code FROM liveplates_id_community WHERE tky_code = '$tkyCode'";
+    $result = mysql_query($searchTkyCodeSqlCmd);
+    if ($result)
+    {
+        $row = mysql_fetch_array($result);
+        $communityId = $row["community"];
+    }
+    return $communityId;
+}
+
+function getFeePeriodFromArray($arrayFeePeriod, $communityId, $payGroup)
+{
+    $bFound = false;
+    for($i=0 ; $i<count($arrayFeePeriod) ; $i++)
+    {
+        if($arrayFeePeriod[i][0] == $communityId &&
+           $arrayFeePeriod[i][1] == $payGroup)
+        {
+            $bFound = true;
+            break;
+        }
+    }
+    return $bFound;
+}
+
+function insertPayGroupToFeePeriod($communityId, $payGroup)
+{
+    $mappingIdAndNameSqlCmd = "SELECT community, name FROM fee_period WHERE community = '$communityId' AND name = '$payGroup'";
+    $mappingIdAndNameFromSql = mysql_query($mappingIdAndNameSqlCmd);
+    if (mysql_num_rows($mappingIdAndNameFromSql) == 0)
+    {
+        // 取得今日日期
+        $today = date("Y-m-d H:i:s");
+        // 插入資料至fee_period
+        $insertDataSqlCmd = "INSERT INTO fee_period (community, group_id, name, fee_footage, note, create_date) VALUES ('$communityId', 0, '$payGroup', 0, '', '$today')";
+        $insertDataFromSql = mysql_query($insertDataSqlCmd);
+        if ($insertDataFromSql)
+        {
+            echo "Insert fee_period Success.", "</br>";
+            return true;
+        }
+        else
+        {
+            echo "Insert fee_period Error, Message : ", mysql_error(), "</br>";
+            return false;
+        }
+    }
+    else
+    {
+        echo "Data is exists From fee_period.", "</br>";
+        return true;
+    }
 }
 
 function parsePayments($line)
@@ -212,7 +221,6 @@ function parsePayments($line)
         array("note", 35, 234),            // 繳費明細 35-234
 
     );
-
     return paserStr($line, $list);
 }
 
@@ -264,35 +272,22 @@ function getStr($line, $begin, $end)
     return substr($line, $start, $length);
 }
 
-function insertPaymentItem($item)
+function insertPaymentItem($item, $communityId)
 {
-    //insert到fee_order
-
-    $serverName = "localhost";
-    $userName = "root";
-    $password = "Abcd1234";
-    $dbName = "tokyo_payment_test";
-
-    $mysqli = new mysqli($serverName, $userName, $password, $dbName);
-    if ($mysqli->connect_error) {
-        die("Connection failed: " . $mysqli->connect_error);
-    }
-
-    // $livebricksId = array_values($item[0])[1];
     $accountNumbers = array_values($item[1])[1];
-    // $name = array_values($item[2])[1];
     $payStart = array_values($item[3])[1];
     $payEnd = array_values($item[4])[1];
-    $note = array_values($item[6])[1];
 
-    $selectCommunityDataSqlCmd = "SELECT * FROM liveplates_id WHERE account = '$accountNumbers'";
-    $selectCommunityDataFromSql = $mysqli->query($selectCommunityDataSqlCmd);
-    if ($selectCommunityDataFromSql) {
-        $row = $selectCommunityDataFromSql->fetch_array(MYSQLI_ASSOC);
+    $selectCommunityDataSqlCmd = "SELECT * FROM liveplates_id WHERE account = '$accountNumbers' AND community = '$communityId'";
+    $selectCommunityDataFromSql = mysql_query($selectCommunityDataSqlCmd);
+    if ($selectCommunityDataFromSql)
+    {
+        $row = mysql_fetch_array($selectCommunityDataFromSql);
         $livebricksId = $row["id"];
-        $community = $row["community"];
         $householdNumber = $row["household_number"];
-    } else {
+    }
+    else
+    {
         echo "Search not found From liveplates_id.", "</br>";
     }
 
@@ -301,41 +296,25 @@ function insertPaymentItem($item)
     echo "household Number : ",$householdNumber, "</br>";
     echo "pay Start : ",$payStart, "</br>";
     echo "pay End : ",$payEnd, "</br>";
-    echo "note : ",$note, "</br>";
 
     // 預設日期
     $paytime = date('Y-m-d', strtotime($date));
     echo "paytime : ",$paytime, "</br>";
 
     // 插入資料至fee_order
-    $insertDataSqlCmd = "INSERT INTO fee_order (community, account, liveplates_id, household_number, period, period_name, begin_time, end_time, pay_time, status_description, virtual_account_id, payment_way)
-                    VALUES ('$community', '$accountNumbers', '$livebricksId', '$householdNumber', 0, ' ', '$payStart', '$payEnd', '$paytime', '$note', ' ', 0)";
-    $insertDataFromSql = $mysqli->query($insertDataSqlCmd);
+    $insertDataSqlCmd = "INSERT INTO fee_order (community, account, liveplates_id, household_number, period, period_name, begin_time, end_time, pay_time, virtual_account_id, payment_way)
+                    VALUES ('$community', '$accountNumbers', '$livebricksId', '$householdNumber', 0, ' ', '$payStart', '$payEnd', '$paytime', ' ', 0)";
+    $insertDataFromSql = mysql_query($insertDataSqlCmd);
     if ($insertDataFromSql) {
         echo "Insert fee_order success.", "</br>";
     } else {
-        echo "Insert fee_order error, Message : ", $mysqli->error, "</br>";
+        echo "Insert fee_order error, Message : ", mysql_error(), "</br>";
     }
-
-    $selectCommunityDataFromSql ->free();
-    $mysqli->close();
 }
 
 function saveParseredFileWithInsertCounts($file_name, $insertCounts)
 {
     //將已parsered的資訊存到DB
-
-    // 連結DB
-    $serverName = "localhost";
-    $userName = "root";
-    $password = "Abcd1234";
-    $dbName = "tokyo_payment_test";
-
-    $mysqli = new mysqli($serverName, $userName, $password, $dbName);
-    if ($mysqli->connect_error) {
-        die("Connection failed: " . $mysqli->connect_error);
-    }
-
     echo "file name : ",$file_name, "</br>";
     echo "insert counts : ", $insertCounts, "</br>";
 
@@ -345,17 +324,12 @@ function saveParseredFileWithInsertCounts($file_name, $insertCounts)
     // 插入資料至fee_tky_parsered
     $insertDataSqlCmd = "INSERT INTO fee_tky_parsered (file_name, item_count, create_date)
                          VALUES ('$file_name', '$insertCounts', '$currentDay')";
-    $insertDataFromSql = $mysqli->query($insertDataSqlCmd);
+    $insertDataFromSql = mysql_query($insertDataSqlCmd);
     if ($insertDataFromSql) {
         echo "Insert fee_tky_parsered success.", "</br>";
     } else {
-        echo "Insert fee_tky_parsered error, Message : ", $mysqli->error, "</br>";
+        echo "Insert fee_tky_parsered error, Message : ", mysql_error(), "</br>";
     }
-
-    $mysqli->close();
 }
 
 ?>
-
-</body>
-</html>
