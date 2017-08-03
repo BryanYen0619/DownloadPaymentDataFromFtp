@@ -1,4 +1,4 @@
-<?php require_once('../../../Connections/link.php');?>
+<?php require_once('Connections/link.php');?>
 <?php
 ### 連接的 FTP 伺服器是 localhost
 $conn_id = ftp_connect('ip');
@@ -277,6 +277,7 @@ function insertPaymentItem($item, $communityId)
     $accountNumbers = array_values($item[1])[1];
     $payStart = array_values($item[3])[1];
     $payEnd = array_values($item[4])[1];
+    $payFee = array_values($item[5][1]);
 
     $selectCommunityDataSqlCmd = "SELECT * FROM liveplates_id WHERE account = '$accountNumbers' AND community = '$communityId'";
     $selectCommunityDataFromSql = mysql_query($selectCommunityDataSqlCmd);
@@ -296,14 +297,15 @@ function insertPaymentItem($item, $communityId)
     echo "household Number : ",$householdNumber, "</br>";
     echo "pay Start : ",$payStart, "</br>";
     echo "pay End : ",$payEnd, "</br>";
+    echo "pay Fee : ",$payFee, "</br>";
 
     // 預設日期
     $paytime = date('Y-m-d', strtotime($date));
     echo "paytime : ",$paytime, "</br>";
 
     // 插入資料至fee_order
-    $insertDataSqlCmd = "INSERT INTO fee_order (community, account, liveplates_id, household_number, period, period_name, begin_time, end_time, pay_time, virtual_account_id, payment_way)
-                    VALUES ('$community', '$accountNumbers', '$livebricksId', '$householdNumber', 0, ' ', '$payStart', '$payEnd', '$paytime', ' ', 0)";
+    $insertDataSqlCmd = "INSERT INTO fee_order (community, account, liveplates_id, household_number, period, period_name, amount_payable, begin_time, end_time, pay_time, virtual_account_id, payment_way)
+                    VALUES ('$community', '$accountNumbers', '$livebricksId', '$householdNumber', 0, ' ','$payFee', '$payStart', '$payEnd', '$paytime', ' ', 0)";
     $insertDataFromSql = mysql_query($insertDataSqlCmd);
     if ($insertDataFromSql) {
         echo "Insert fee_order success.", "</br>";
