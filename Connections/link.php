@@ -13,6 +13,6 @@ if (!$mysql) {
     die("Connection failed: " . $mysqli->connect_error);
 }
 
-mysql_select_db("$dbName", $mysql)  or die("mysql_select_db() 資料庫無法連結！");
+mysql_select_db($dbName, $mysql)  or die("mysql_select_db() 資料庫無法連結！");
 
 ?>
